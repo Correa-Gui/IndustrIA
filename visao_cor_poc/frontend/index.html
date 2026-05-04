@@ -542,11 +542,18 @@ function ResultCard({res,id}){
 /* ══════════════════════════════════════════════
    PAGE: ANÁLISE
 ══════════════════════════════════════════════ */
-function PageAnalise(){
+function PageAnalise({arquivoInicial}){
   const [resultado,setResultado]=useState(null);
   const [preview,setPreview]=useState(null);
   const [loading,setLoading]=useState(false);
   const [erro,setErro]=useState(null);
+
+  // Processa arquivo inicial automaticamente
+  useEffect(()=>{
+    if(arquivoInicial){
+      handleFile(arquivoInicial);
+    }
+  },[arquivoInicial]);
 
   const handleFile=async(file)=>{
     setErro(null);setResultado(null);
@@ -792,7 +799,7 @@ function PageHistorico(){
 /* ══════════════════════════════════════════════
    PAGE: MONITORAMENTO
 ══════════════════════════════════════════════ */
-function PageMonitoramento(){
+function PageMonitoramento({arquivoInicial}){
   const [file,setFile]=useState(null);
   const [sampleRate,setSampleRate]=useState(5);
   const [loading,setLoading]=useState(false);
@@ -804,6 +811,13 @@ function PageMonitoramento(){
   const videoRef=useRef(null);
   const [videoReady,setVideoReady]=useState(false);
   const [fileUrl,setFileUrl]=useState(null);
+
+  // Processa arquivo inicial automaticamente
+  useEffect(()=>{
+    if(arquivoInicial && arquivoInicial.type.startsWith('video/')){
+      handleFile(arquivoInicial);
+    }
+  },[arquivoInicial]);
 
   const handleFile=async(f)=>{
     setFile(f);setData(null);setPlayIdx(0);setPlaying(false);setVideoReady(false);
@@ -1531,22 +1545,105 @@ function PageAjuda({onTutorial}){
 /* ══════════════════════════════════════════════
    PAGE: DEMO
 ══════════════════════════════════════════════ */
-function PageDemo({setPage}){
+function PageDemo({setPage, onArquivoSelecionado}){
   const [file,setFile]=useState(null);
   const [preview,setPreview]=useState(null);
   const [drag,setDrag]=useState(false);
+  const [arquivosDemo,setArquivosDemo]=useState([]);
+  const [carregandoLista,setCarregandoLista]=useState(true);
+  const [salvando,setSalvando]=useState(false);
+  const [arquivoSelecionado,setArquivoSelecionado]=useState(null);
   const ref=useRef();
+
+  // Carrega lista de arquivos demo ao montar componente
+  useEffect(()=>{
+    carregarArquivosDemo();
+  },[]);
+
+  const carregarArquivosDemo=async()=>{
+    try{
+      const r=await fetch(`${API}/demo/listar`);
+      if(r.ok){
+        const lista=await r.json();
+        setArquivosDemo(lista);
+      }
+    }catch(e){
+      console.error('Erro ao carregar arquivos demo:',e);
+    }finally{
+      setCarregandoLista(false);
+    }
+  };
+
+  const salvarArquivoDemo=async()=>{
+    if(!file) return;
+    setSalvando(true);
+    try{
+      const form=new FormData();
+      form.append('file',file);
+      const r=await fetch(`${API}/demo/salvar`,{method:'POST',body:form});
+      if(r.ok){
+        await carregarArquivosDemo(); // Recarrega lista
+        setFile(null);
+        setPreview(null);
+        alert('Arquivo demo salvo com sucesso!');
+      }else{
+        const erro=await r.json();
+        alert('Erro ao salvar: '+erro.detail);
+      }
+    }catch(e){
+      alert('Erro ao salvar arquivo demo');
+    }finally{
+      setSalvando(false);
+    }
+  };
+
+  const usarArquivoDemo=async(arquivo)=>{
+    setArquivoSelecionado(arquivo);
+    try{
+      const r=await fetch(`${API}/demo/arquivo/${arquivo.id}`);
+      if(r.ok){
+        const blob=await r.blob();
+        const arquivoBlob=new File([blob],arquivo.nome_arquivo,{type:arquivo.tipo_arquivo});
+
+        // Passa o arquivo para o callback
+        if(onArquivoSelecionado){
+          onArquivoSelecionado(arquivoBlob);
+        }
+
+        // Redireciona baseado no tipo
+        if(arquivo.tipo_midia==='video'){
+          setPage('monitoramento');
+        }else{
+          setPage('analise');
+        }
+      }else{
+        alert('Erro ao carregar arquivo demo');
+      }
+    }catch(e){
+      alert('Erro ao usar arquivo demo');
+    }finally{
+      setArquivoSelecionado(null);
+    }
+  };
+
+  const excluirArquivoDemo=async(arquivoId)=>{
+    if(!confirm('Tem certeza que deseja excluir este arquivo demo?')) return;
+    try{
+      const r=await fetch(`${API}/demo/arquivo/${arquivoId}`,{method:'DELETE'});
+      if(r.ok){
+        await carregarArquivosDemo(); // Recarrega lista
+      }else{
+        alert('Erro ao excluir arquivo demo');
+      }
+    }catch(e){
+      alert('Erro ao excluir arquivo demo');
+    }
+  };
 
   const handleFile=(f)=>{
     if(!f) return;
     setFile(f);
     setPreview({url:URL.createObjectURL(f),isVideo:f.type.startsWith('video')});
-  };
-
-  const handleUseDemo=()=>{
-    if(!file) return;
-    if(file.type.startsWith('video')) setPage('monitoramento');
-    else setPage('analise');
   };
 
   return(
@@ -1560,21 +1657,27 @@ function PageDemo({setPage}){
       <div className="relative z-10">
         <div className="text-center mb-8">
           <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'36px',fontWeight:700,fontStyle:'italic',color:'#1c1917',lineHeight:1.1}}>
-            Demo de Amostra
+            Arquivos Demo
           </h1>
           <p className="text-stone-500 text-lg mt-2 max-w-md mx-auto">
-            Teste o sistema com arquivos de exemplo — imagens ou vídeos de açúcar
+            Gerencie arquivos de exemplo — imagens ou vídeos de açúcar
           </p>
         </div>
 
-        {/* Upload Area */}
+        {/* Seção de Upload */}
         <div className="max-w-2xl mx-auto mb-8">
+          <div className="mb-4">
+            <h2 style={{fontFamily:'JetBrains Mono,monospace',fontSize:'14px',letterSpacing:'0.08em',textTransform:'uppercase',color:'#9ca3af'}}>
+              Novo Arquivo Demo
+            </h2>
+          </div>
+
           <div
             onClick={()=>ref.current.click()}
             onDragOver={(e)=>{e.preventDefault();setDrag(true)}}
             onDragLeave={()=>setDrag(false)}
             onDrop={(e)=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0])}}
-            className={`relative border-3 border-dashed rounded-3xl p-12 text-center cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${
+            className={`relative border-3 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${
               drag ? 'border-cana-500 bg-cana-50/50 scale-105' : 'border-amber-300 bg-gradient-to-br from-amber-50/30 to-cana-50/20'
             } ${file ? 'pointer-events-none opacity-50' : ''}`}
             style={{
@@ -1583,11 +1686,11 @@ function PageDemo({setPage}){
             }}
           >
             <input ref={ref} type="file" accept="image/*,video/*" onChange={(e)=>handleFile(e.target.files[0])} className="hidden"/>
-            
+
             {!file && (
               <>
-                <div className="w-20 h-20 bg-amber-100 border-2 border-amber-300 rounded-3xl flex items-center justify-center mx-auto mb-6 text-amber-600 transform transition-transform hover:rotate-12">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10">
+                <div className="w-16 h-16 bg-amber-100 border-2 border-amber-300 rounded-3xl flex items-center justify-center mx-auto mb-6 text-amber-600 transform transition-transform hover:rotate-12">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
                     <path d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.5l.36 1.44c.463 1.853-.663 3.707-2.48 4.328a15.053 15.053 0 01-9.36 0c-1.817-.621-2.943-2.475-2.48-4.328L5 14.5"/>
                   </svg>
                 </div>
@@ -1616,9 +1719,9 @@ function PageDemo({setPage}){
           </div>
         </div>
 
-        {/* Preview and Action */}
+        {/* Preview e Ações do Upload */}
         {preview && (
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-4xl mx-auto mb-8">
             <div className="grid md:grid-cols-2 gap-8 items-center">
               {/* Preview */}
               <div className="relative">
@@ -1636,21 +1739,45 @@ function PageDemo({setPage}){
                 </p>
               </div>
 
-              {/* Action Button */}
+              {/* Ações */}
               <div className="text-center md:text-left">
                 <p className="text-stone-600 mb-6 text-lg">
-                  Arquivo carregado com sucesso! Clique abaixo para usar no sistema.
+                  Arquivo carregado! Salve para uso futuro ou use diretamente.
                 </p>
-                <button
-                  onClick={handleUseDemo}
-                  className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-amber-500 to-cana-600 hover:from-amber-600 hover:to-cana-700 text-white font-bold rounded-2xl shadow-lg transform hover:scale-105 transition-all duration-200"
-                  style={{fontFamily:'Playfair Display,Georgia,serif',fontStyle:'italic',fontSize:'18px'}}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-                    <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                  </svg>
-                  Usar Demo
-                </button>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={salvarArquivoDemo}
+                    disabled={salvando}
+                    className="inline-flex items-center justify-center gap-3 px-6 py-3 bg-gradient-to-r from-amber-500 to-cana-600 hover:from-amber-600 hover:to-cana-700 disabled:opacity-50 text-white font-bold rounded-2xl shadow-lg transform hover:scale-105 transition-all duration-200"
+                    style={{fontFamily:'Playfair Display,Georgia,serif',fontStyle:'italic',fontSize:'16px'}}
+                  >
+                    {salvando ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                          <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                          <polyline points="17,21 17,13 7,13 7,21"/>
+                          <polyline points="7,3 7,8 15,8"/>
+                        </svg>
+                        Salvar Demo
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={()=>{if(file.type.startsWith('video')) setPage('monitoramento'); else setPage('analise');}}
+                    className="inline-flex items-center justify-center gap-3 px-6 py-3 border-2 border-amber-300 bg-white hover:bg-amber-50 text-amber-700 font-semibold rounded-2xl shadow-lg transform hover:scale-105 transition-all duration-200"
+                    style={{fontFamily:'Playfair Display,Georgia,serif',fontStyle:'italic',fontSize:'16px'}}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                      <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    Usar Agora
+                  </button>
+                </div>
                 <p className="text-stone-400 text-sm mt-3" style={{fontFamily:'JetBrains Mono,monospace'}}>
                   Redirecionará para {file.type.startsWith('video') ? 'Monitoramento' : 'Análise'}
                 </p>
@@ -1658,6 +1785,103 @@ function PageDemo({setPage}){
             </div>
           </div>
         )}
+
+        {/* Lista de Arquivos Demo Salvos */}
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6">
+            <h2 style={{fontFamily:'JetBrains Mono,monospace',fontSize:'14px',letterSpacing:'0.08em',textTransform:'uppercase',color:'#9ca3af'}}>
+              Arquivos Demo Salvos
+            </h2>
+          </div>
+
+          {carregandoLista ? (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-4 border-amber-300 border-t-amber-600 rounded-full animate-spin"/>
+            </div>
+          ) : arquivosDemo.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-stone-100 border-2 border-stone-200 rounded-3xl flex items-center justify-center mx-auto mb-4 text-stone-400">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+                  <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+              </div>
+              <p className="text-stone-500 text-lg mb-2">Nenhum arquivo demo salvo ainda</p>
+              <p className="text-stone-400 text-sm">Faça upload de um arquivo acima para começar</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {arquivosDemo.map(arquivo=>(
+                <div key={arquivo.id} className="bg-white rounded-2xl border border-amber-100 shadow-sm hover:shadow-lg transition-all duration-200 p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        arquivo.tipo_midia === 'video' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                      }`}>
+                        {arquivo.tipo_midia === 'video' ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-stone-800 text-sm truncate max-w-32" title={arquivo.nome_arquivo}>
+                          {arquivo.nome_arquivo}
+                        </p>
+                        <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px',color:'#9ca3af'}}>
+                          {arquivo.tamanho_mb} MB
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={()=>excluirArquivoDemo(arquivo.id)}
+                      className="w-6 h-6 text-stone-400 hover:text-red-500 transition-colors"
+                      title="Excluir arquivo"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="mb-3">
+                    <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',letterSpacing:'0.08em',textTransform:'uppercase',color:'#9ca3af',marginBottom:'4px'}}>
+                      Criado em
+                    </p>
+                    <p className="text-xs text-stone-600">{arquivo.criado_em_formatado}</p>
+                    {arquivo.usado_em_formatado && (
+                      <p className="text-xs text-stone-500 mt-1">Usado em {arquivo.usado_em_formatado}</p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={()=>usarArquivoDemo(arquivo)}
+                    disabled={arquivoSelecionado?.id === arquivo.id}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-cana-600 hover:from-amber-600 hover:to-cana-700 disabled:opacity-50 text-white font-semibold rounded-xl shadow-sm transform hover:scale-105 transition-all duration-200"
+                    style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',letterSpacing:'0.05em'}}
+                  >
+                    {arquivoSelecionado?.id === arquivo.id ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+                        Carregando...
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                          <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        Usar {arquivo.tipo_midia === 'video' ? 'Monitoramento' : 'Análise'}
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1670,16 +1894,21 @@ function App(){
   const [page,setPage]=useState('analise');
   const [sidebarOpen,setSidebarOpen]=useState(false);
   const [tutorial,setTutorial]=useState(()=>!localStorage.getItem('tutorial_done'));
+  const [arquivoSelecionado,setArquivoSelecionado]=useState(null);
 
   const closeTutorial=()=>{
     localStorage.setItem('tutorial_done','1');
     setTutorial(false);
   };
 
+  const handleSelecionarArquivo=(arquivo)=>{
+    setArquivoSelecionado(arquivo);
+  };
+
   const pages={
-    analise:<PageAnalise/>,
-    demo:<PageDemo setPage={setPage}/>,
-    monitoramento:<PageMonitoramento/>,
+    analise:<PageAnalise arquivoInicial={arquivoSelecionado}/>,
+    demo:<PageDemo setPage={setPage} onArquivoSelecionado={handleSelecionarArquivo}/>,
+    monitoramento:<PageMonitoramento arquivoInicial={arquivoSelecionado}/>,
     treino:<PageTreino/>,
     calibracao:<PageCalibracao/>,
     historico:<PageHistorico/>,

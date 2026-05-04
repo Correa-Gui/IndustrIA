@@ -245,6 +245,79 @@ async def monitoramento_video(
     })
 
 
+# ── Demo ──────────────────────────────────────────────────────────────────────
+@app.post("/demo/salvar")
+async def salvar_arquivo_demo(file: UploadFile = File(...)):
+    """Salva arquivo demo no banco de dados"""
+    if not file.filename:
+        raise HTTPException(400, "Nome do arquivo é obrigatório")
+
+    # Lê o conteúdo do arquivo
+    conteudo = await file.read()
+
+    if len(conteudo) == 0:
+        raise HTTPException(400, "Arquivo vazio")
+
+    # Salva no banco
+    arquivo_id = _db.salvar_arquivo_demo(file.filename, file.content_type, conteudo)
+
+    return {"id": arquivo_id, "mensagem": "Arquivo demo salvo com sucesso"}
+
+
+@app.get("/demo/listar")
+async def listar_arquivos_demo():
+    """Lista todos os arquivos demo salvos"""
+    arquivos = _db.listar_arquivos_demo()
+
+    # Formata os dados para o frontend
+    for arquivo in arquivos:
+        arquivo['tamanho_mb'] = round(arquivo['tamanho_bytes'] / (1024 * 1024), 2)
+        arquivo['criado_em_formatado'] = datetime.fromisoformat(arquivo['criado_em']).strftime('%d/%m/%Y %H:%M')
+        arquivo['usado_em_formatado'] = (
+            datetime.fromisoformat(arquivo['usado_em']).strftime('%d/%m/%Y %H:%M')
+            if arquivo['usado_em'] else None
+        )
+        del arquivo['tamanho_bytes']  # Remove campo original
+
+    return arquivos
+
+
+@app.get("/demo/arquivo/{arquivo_id}")
+async def obter_arquivo_demo(arquivo_id: int):
+    """Retorna dados de um arquivo demo específico"""
+    arquivo = _db.obter_arquivo_demo(arquivo_id)
+    if not arquivo:
+        raise HTTPException(404, "Arquivo demo não encontrado")
+
+    # Marca como usado
+    _db.marcar_arquivo_usado(arquivo_id)
+
+    # Retorna como resposta de arquivo
+    from fastapi.responses import Response
+    return Response(
+        content=arquivo['dados_bytes'],
+        media_type=arquivo['tipo_arquivo'],
+        headers={"Content-Disposition": f"attachment; filename={arquivo['nome_arquivo']}"}
+    )
+
+
+@app.delete("/demo/arquivo/{arquivo_id}")
+async def excluir_arquivo_demo(arquivo_id: int):
+    """Exclui um arquivo demo"""
+    excluido = _db.excluir_arquivo_demo(arquivo_id)
+    if not excluido:
+        raise HTTPException(404, "Arquivo demo não encontrado")
+
+    return {"mensagem": "Arquivo demo excluído com sucesso"}
+
+
+@app.delete("/demo/limpar")
+async def limpar_arquivos_demo():
+    """Remove todos os arquivos demo"""
+    _db.limpar_arquivos_demo()
+    return {"mensagem": "Todos os arquivos demo foram removidos"}
+
+
 # ── Treino ────────────────────────────────────────────────────────────────────
 class AmostraPayload(BaseModel):
     L: float
