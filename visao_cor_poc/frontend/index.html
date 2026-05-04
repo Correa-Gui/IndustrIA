@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CanaVision — Classificação ICUMSA</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cana: {
+              50:'#fffbeb',100:'#fef3c7',200:'#fde68a',300:'#fcd34d',
+              400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',
+              800:'#92400e',900:'#78350f',950:'#451a03'
+            }
+          },
+          fontFamily: {
+            display:['Playfair Display','Georgia','serif'],
+            mono:['JetBrains Mono','Consolas','monospace'],
+            sans:['DM Sans','system-ui','sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500;1,700&family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'DM Sans',system-ui,sans-serif;background:#FDFAF4;overflow-x:hidden;color:#1C1208}
+
+    body::after{
+      content:'';position:fixed;inset:0;pointer-events:none;z-index:9998;opacity:.035;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    ::-webkit-scrollbar{width:4px;height:4px}
+    ::-webkit-scrollbar-track{background:#FDFAF4}
+    ::-webkit-scrollbar-thumb{background:#d97706;border-radius:99px}
+
+    @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    @keyframes slideIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+    @keyframes scaleIn{from{opacity:0;transform:scale(.93)}to{opacity:1;transform:scale(1)}}
+
+    .fade-up{animation:fadeUp .5s cubic-bezier(.16,1,.3,1) both}
+    .fade-in{animation:fadeIn .3s ease both}
+    .scale-in{animation:scaleIn .38s cubic-bezier(.16,1,.3,1) both}
+    .spinner{animation:spin 1s linear infinite}
+    .pulse-anim{animation:pulse 1.8s ease infinite}
+    .drop-active{border-color:#d97706!important;background:#fffbeb!important}
+    .sidebar-slide{animation:slideIn .3s cubic-bezier(.16,1,.3,1) both}
+
+    .icumsa-spectrum-bar{
+      background:linear-gradient(to right,
+        #FEFEFE 0%,#FFFDE7 8%,#FFF8DC 18%,#FFD700 36%,
+        #FFA500 50%,#FF6B00 65%,#8B2500 82%,#3D1200 100%
+      );
+      box-shadow:inset 0 1px 4px rgba(0,0,0,.15),inset 0 -1px 3px rgba(255,255,255,.15);
+    }
+
+    .sidebar-bg{background:linear-gradient(165deg,#0E0B05 0%,#1A1208 55%,#100D06 100%)}
+    .sidebar-divider{background:linear-gradient(90deg,transparent,rgba(212,137,10,.35),transparent)}
+
+    .tile-hover{transition:transform .18s ease,box-shadow .18s ease}
+    .tile-hover:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(180,83,9,.1)}
+
+    .tutorial-overlay{background:rgba(28,18,8,.82);backdrop-filter:blur(8px)}
+
+    input[type=file]{display:none}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const {useState,useRef,useCallback,useEffect} = React;
+const API = "";
+
+/* ══════════════════════════════════════════════
+   TUTORIAL DATA
+══════════════════════════════════════════════ */
+const TUTORIAL_STEPS = [
+  {id:'welcome',title:'Bem-vindo ao CanaVision',icon:'🌾',
+   body:'Sistema de classificação de açúcar por visão computacional.\nAnalisamos a cor da amostra e classificamos automaticamente pelo padrão ICUMSA internacional.'},
+  {id:'upload',title:'Como enviar uma amostra',icon:'📤',target:'upload-zone',
+   body:'Arraste uma foto ou vídeo do açúcar para a área de upload, ou clique para selecionar.\nA análise é feita automaticamente em segundos.'},
+  {id:'icumsa',title:'O que é ICUMSA?',icon:'📊',target:'result-card',
+   body:'ICUMSA é a unidade padrão de cor do açúcar.\n• Menor valor = açúcar mais branco e refinado\n• Maior valor = mais escuro, menos refinado\n• ICUMSA 45 = açúcar refinado branco premium.'},
+  {id:'score',title:'Score de Brancura',icon:'⚡',target:'result-card',
+   body:'Índice 0–100 baseado na cor:\n• L* (luminosidade) — quanto mais alto, mais claro\n• b* (amarelamento) — quanto maior, mais amarelado\nFórmula: 0.8 × L* com penalização por b*'},
+  {id:'lab',title:'Canais L* a* b*',icon:'🎨',target:'result-card',
+   body:'Espaço de cor perceptual CIE LAB:\n• L* = Luminosidade (0 = preto, 100 = branco)\n• a* = Verde (−) ↔ Vermelho (+)\n• b* = Azul (−) ↔ Amarelo (+)'},
+  {id:'done',title:'Pronto para usar!',icon:'✅',
+   body:'Envie sua primeira amostra e veja o resultado.\nPara rever este tutorial, acesse Ajuda no menu lateral.'},
+];
+
+/* ══════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════ */
+function icumsaStyle(v){
+  if(v<=45)  return{bg:'bg-amber-50',  border:'border-amber-300', text:'text-amber-900', pill:'bg-cana-700 text-white',  label:'Branco Premium'};
+  if(v<=150) return{bg:'bg-cana-50',   border:'border-cana-300',  text:'text-cana-900',  pill:'bg-cana-600 text-white',  label:'Branco Padrão'};
+  if(v<=600) return{bg:'bg-orange-50', border:'border-orange-300',text:'text-orange-900',pill:'bg-orange-600 text-white',label:'VHP / Demerara'};
+  return      {bg:'bg-stone-100', border:'border-stone-400', text:'text-stone-900', pill:'bg-stone-700 text-white', label:'Mascavo / Bruto'};
+}
+function confStyle(c){
+  return c==='Alta'
+    ?'bg-emerald-100 text-emerald-800 border border-emerald-200'
+    :c==='Media'
+    ?'bg-amber-100 text-amber-800 border border-amber-200'
+    :'bg-red-100 text-red-700 border border-red-200';
+}
+function fmt(v,d=1){return v==null?'—':Number(v).toFixed(d)}
+function fmtTime(ts){
+  try{return new Date(ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+  catch{return ts||'—'}
+}
+
+/* ══════════════════════════════════════════════
+   ICONS
+══════════════════════════════════════════════ */
+const Icon={
+  Upload:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>,
+  Chart:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z"/></svg>,
+  History:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
+  Help:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg>,
+  Menu:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>,
+  X:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 18L18 6M6 6l12 12"/></svg>,
+  Cana:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.5l.36 1.44c.463 1.853-.663 3.707-2.48 4.328a15.053 15.053 0 01-9.36 0c-1.817-.621-2.943-2.475-2.48-4.328L5 14.5"/></svg>,
+  Trash:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>,
+  Download:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>,
+  TrendUp:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M22 7l-8.5 8.5-5-5L2 17M22 7h-6M22 7v6"/></svg>,
+  TrendDown:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M22 17l-8.5-8.5-5 5L2 7M22 17h-6M22 17v-6"/></svg>,
+  Stable:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M5 12h14"/></svg>,
+  Monitor:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 7.41A2.25 2.25 0 012.25 5.493V5.25"/></svg>,
+  Brain:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.5l.36 1.44c.463 1.853-.663 3.707-2.48 4.328a15.053 15.053 0 01-9.36 0c-1.817-.621-2.943-2.475-2.48-4.328L5 14.5"/></svg>,
+  Calibrate:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/></svg>,
+};
+
+/* ══════════════════════════════════════════════
+   COLOR SWATCH
+══════════════════════════════════════════════ */
+function ColorSwatch({R,G,B}){
+  const r=Math.round(R||0),g=Math.round(G||0),b=Math.round(B||0);
+  const hex='#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase();
+  const lum=0.299*r+0.587*g+0.114*b;
+  const tc=lum>160?'rgba(28,18,8,.7)':'rgba(253,250,244,.85)';
+  return(
+    <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="w-10 h-10 rounded-xl border-2 border-white/80 flex-shrink-0"
+        style={{
+          background:`rgb(${r},${g},${b})`,
+          boxShadow:`0 4px 16px rgba(${r},${g},${b},.45),0 1px 4px rgba(0,0,0,.2)`
+        }}/>
+      <div>
+        <p style={{color:tc,fontSize:'10px',fontFamily:'JetBrains Mono,monospace',fontWeight:700,letterSpacing:'0.06em',lineHeight:1}}>{hex}</p>
+        <p style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:'#9ca3af',letterSpacing:'0.03em',marginTop:'3px'}}>R{r}·G{g}·B{b}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   ICUMSA SPECTRUM BAR
+══════════════════════════════════════════════ */
+function ICUMSASpectrum({value}){
+  const MAX=1000;
+  const pct=Math.min(97,Math.max(3,(Math.min(value,MAX)/MAX)*100));
+  return(
+    <div className="mt-4">
+      <p style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'10px'}}>
+        Posição na Escala ICUMSA
+      </p>
+      <div className="relative h-3 rounded-full icumsa-spectrum-bar">
+        <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-700 ease-out"
+          style={{left:`${pct}%`}}>
+          <div className="w-5 h-5 rounded-full bg-gray-900 border-2 border-white flex items-center justify-center"
+            style={{boxShadow:'0 0 0 2px rgba(255,255,255,.9),0 2px 8px rgba(0,0,0,.35)'}}>
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-400"/>
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-between mt-2">
+        {[{l:'0'},{l:'45'},{l:'150'},{l:'600'},{l:'1K+'}].map(({l},i)=>(
+          <span key={i} style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:'#9ca3af'}}>{l}</span>
+        ))}
+      </div>
+      <div className="flex justify-between">
+        <span style={{fontSize:'8px',color:'#d1d5db'}}>Branco Premium</span>
+        <span style={{fontSize:'8px',color:'#d1d5db'}}>Mascavo</span>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   TREND BADGE
+══════════════════════════════════════════════ */
+function TrendBadge({trend}){
+  const t=trend?.toLowerCase();
+  const cfg={
+    subindo:{Ic:Icon.TrendUp,cls:'text-red-500 bg-red-50 border-red-200',label:'Subindo'},
+    descendo:{Ic:Icon.TrendDown,cls:'text-emerald-600 bg-emerald-50 border-emerald-200',label:'Descendo'},
+  }[t]||{Ic:Icon.Stable,cls:'text-amber-600 bg-amber-50 border-amber-200',label:'Estável'};
+  return(
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-semibold border ${cfg.cls}`}>
+      <span className="w-3 h-3"><cfg.Ic/></span>
+      {cfg.label}
+    </span>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   HISTORY CHART (SVG area)
+══════════════════════════════════════════════ */
+function HistoryChart({data}){
+  if(!data||data.length<2) return null;
+  const W=600,H=130,PAD=32;
+  const vals=[...data].reverse().map(d=>Number(d.delta_e)||0);
+  const mn=0,mx=Math.max(...vals,700);
+  const sy=v=>H-PAD-((v-mn)/(mx-mn))*(H-PAD*1.5);
+  const pts=vals.map((v,i)=>({x:PAD+(i/(vals.length-1))*(W-PAD*2),y:sy(v)}));
+  const path=pts.map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const area=path+` L${pts[pts.length-1].x},${H-PAD} L${pts[0].x},${H-PAD} Z`;
+  const thresholds=[{v:45,color:'#16a34a',l:'45'},{v:150,color:'#d97706',l:'150'},{v:600,color:'#ea580c',l:'600'}]
+    .filter(t=>sy(t.v)>8&&sy(t.v)<H-PAD);
+  return(
+    <div className="bg-white rounded-2xl border border-amber-100 p-5 shadow-sm overflow-hidden">
+      <p style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'14px'}}>
+        ICUMSA — Histórico Visual
+      </p>
+      <div style={{overflowX:'auto'}}>
+        <svg style={{width:'100%',height:H,minWidth:280}} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMinYMid meet">
+          <defs>
+            <linearGradient id="hGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#d97706" stopOpacity=".22"/>
+              <stop offset="100%" stopColor="#d97706" stopOpacity=".02"/>
+            </linearGradient>
+          </defs>
+          {[.25,.5,.75].map(t=>(
+            <line key={t} x1={PAD} y1={PAD+(H-PAD*1.5)*t} x2={W-PAD} y2={PAD+(H-PAD*1.5)*t} stroke="#f3f4f6" strokeWidth="1"/>
+          ))}
+          {thresholds.map(({v,color,l})=>(
+            <g key={v}>
+              <line x1={PAD} y1={sy(v)} x2={W-PAD} y2={sy(v)} stroke={color} strokeWidth="1" strokeDasharray="3 3" opacity=".55"/>
+              <text x={PAD+4} y={sy(v)-4} fontSize="9" fill={color} fontFamily="JetBrains Mono,monospace">{l}</text>
+            </g>
+          ))}
+          <path d={area} fill="url(#hGrad)"/>
+          <path d={path} fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          {pts.map((p,i)=>(
+            <circle key={i} cx={p.x} cy={p.y} r={i===pts.length-1?4:2}
+              fill={i===pts.length-1?"#d97706":"#fbbf24"}
+              stroke="white" strokeWidth={i===pts.length-1?2:1}/>
+          ))}
+          <line x1={PAD} y1={H-PAD} x2={W-PAD} y2={H-PAD} stroke="#e5e7eb" strokeWidth="1"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════════════ */
+function Sidebar({page,setPage,open,onClose,onTutorial}){
+  const nav=[
+    {id:'analise',label:'Análise',Ic:Icon.Chart},
+    {id:'monitoramento',label:'Monitor',Ic:Icon.Monitor},
+    {id:'treino',label:'Treino',Ic:Icon.Brain},
+    {id:'calibracao',label:'Calibração',Ic:Icon.Calibrate},
+    {id:'historico',label:'Histórico',Ic:Icon.History},
+    {id:'ajuda',label:'Ajuda',Ic:Icon.Help},
+  ];
+  const content=(
+    <div className="flex flex-col min-h-screen sidebar-bg">
+      <div className="px-5 pt-7 pb-5">
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" className="h-9 w-auto" alt="Logo" onError={e=>{e.target.style.display='none'}}/>
+          <div>
+            <div style={{fontFamily:'Playfair Display,Georgia,serif',color:'white',fontWeight:600,fontSize:'17px',fontStyle:'italic',lineHeight:1}}>CanaVision</div>
+            <div style={{fontFamily:'JetBrains Mono,monospace',color:'rgba(251,191,36,.55)',fontSize:'9px',letterSpacing:'0.15em',textTransform:'uppercase',marginTop:'4px'}}>POC v1.0</div>
+          </div>
+        </div>
+        <div className="sidebar-divider h-px mt-5"/>
+      </div>
+      <nav className="flex-1 px-3 py-2 space-y-0.5">
+        {nav.map(({id,label,Ic})=>{
+          const active=page===id;
+          return(
+            <button key={id} onClick={()=>{setPage(id);onClose()}}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                active?'bg-amber-600/15 border border-amber-500/20':'border border-transparent hover:bg-white/5'
+              }`}>
+              <span className={`w-4 h-4 flex-shrink-0 ${active?'text-amber-400':'text-stone-600'}`}><Ic/></span>
+              <span style={{
+                fontFamily:'JetBrains Mono,monospace',
+                fontSize:'11px',letterSpacing:'0.12em',textTransform:'uppercase',
+                color:active?'#fbbf24':'#78716c'
+              }}>{label}</span>
+              {active&&<span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-500"/>}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="px-3 pb-6 pt-2">
+        <div className="sidebar-divider h-px mb-4"/>
+        <button onClick={()=>{onTutorial();onClose()}}
+          className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl hover:bg-white/5 transition-all">
+          <span style={{fontSize:'13px'}}>🎓</span>
+          <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px',letterSpacing:'0.1em',textTransform:'uppercase',color:'#57534e'}}>Tutorial</span>
+        </button>
+        <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'8px',letterSpacing:'0.12em',color:'#292524',textAlign:'center',marginTop:'12px'}}>
+          SISTEMA DE VISÃO DE COR
+        </p>
+      </div>
+    </div>
+  );
+  return(
+    <>
+      <aside className="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 z-30 overflow-y-auto">{content}</aside>
+      {open&&(
+        <>
+          <div className="fixed inset-0 bg-black/60 z-40 md:hidden fade-in" onClick={onClose}/>
+          <aside className="fixed left-0 top-0 bottom-0 w-64 z-50 md:hidden sidebar-slide flex flex-col overflow-y-auto">
+            <button onClick={onClose} className="absolute top-4 right-4 text-stone-500 hover:text-white w-5 h-5 z-10"><Icon.X/></button>
+            {content}
+          </aside>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   TUTORIAL
+══════════════════════════════════════════════ */
+function Tutorial({onClose}){
+  const [step,setStep]=useState(0);
+  const s=TUTORIAL_STEPS[step];
+  const last=step===TUTORIAL_STEPS.length-1;
+  return(
+    <div className="fixed inset-0 z-50 flex items-center justify-center tutorial-overlay fade-in">
+      <div className="bg-stone-950 rounded-3xl shadow-2xl w-full max-w-sm mx-4 scale-in overflow-hidden border border-amber-900/25">
+        <div className="h-0.5 bg-stone-800">
+          <div className="h-0.5 bg-amber-500 transition-all duration-500"
+            style={{width:`${((step+1)/TUTORIAL_STEPS.length)*100}%`}}/>
+        </div>
+        <div className="p-8">
+          <div className="flex justify-between items-center mb-6">
+            <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'rgba(217,119,6,.5)',letterSpacing:'0.15em',textTransform:'uppercase'}}>
+              {step+1}/{TUTORIAL_STEPS.length}
+            </span>
+            <button onClick={onClose} className="text-stone-600 hover:text-stone-300 w-4 h-4"><Icon.X/></button>
+          </div>
+          <div className="text-4xl text-center mb-5">{s.icon}</div>
+          <h2 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'20px',fontWeight:700,color:'#fef3c7',textAlign:'center',marginBottom:'12px',fontStyle:'italic'}}>{s.title}</h2>
+          <p className="text-sm text-stone-400 text-center leading-relaxed whitespace-pre-line">{s.body}</p>
+          <div className="flex justify-center gap-1.5 mt-6 mb-6">
+            {TUTORIAL_STEPS.map((_,i)=>(
+              <button key={i} onClick={()=>setStep(i)}
+                className={`h-1 rounded-full transition-all ${i===step?'w-6 bg-amber-500':'w-2 bg-stone-700'}`}/>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            {step>0&&(
+              <button onClick={()=>setStep(s=>s-1)}
+                className="flex-1 py-3 rounded-xl border border-stone-700 text-stone-400 font-medium text-sm hover:bg-stone-900 transition-all">
+                ← Anterior
+              </button>
+            )}
+            <button onClick={()=>last?onClose():setStep(s=>s+1)}
+              className="flex-1 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm transition-all">
+              {last?'Começar':'Próximo →'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   UPLOAD ZONE
+══════════════════════════════════════════════ */
+function UploadZone({onFile,loading,id}){
+  const [drag,setDrag]=useState(false);
+  const ref=useRef();
+  const handle=useCallback(f=>{if(f)onFile(f)},[onFile]);
+  return(
+    <div id={id}
+      onClick={()=>!loading&&ref.current.click()}
+      onDragOver={e=>{e.preventDefault();setDrag(true)}}
+      onDragLeave={()=>setDrag(false)}
+      onDrop={e=>{e.preventDefault();setDrag(false);handle(e.dataTransfer.files[0])}}
+      className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200
+        ${drag?'drop-active':'border-amber-200 bg-white hover:border-amber-400 hover:bg-amber-50/30'}
+        ${loading?'pointer-events-none':''}`}>
+      <input ref={ref} type="file" accept="image/*,video/*" onChange={e=>handle(e.target.files[0])}/>
+      {loading?(
+        <div className="flex flex-col items-center gap-3">
+          <svg className="spinner w-10 h-10 text-amber-600" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <p className="font-semibold text-amber-800">Analisando amostra...</p>
+          <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#d97706'}}>Extração LAB · Classificação ICUMSA</p>
+        </div>
+      ):(
+        <>
+          <div className="w-14 h-14 bg-amber-50 border-2 border-amber-200 rounded-2xl flex items-center justify-center mx-auto mb-4 text-amber-500">
+            <div className="w-7 h-7"><Icon.Upload/></div>
+          </div>
+          <p className="font-semibold text-stone-700">Enviar amostra de açúcar</p>
+          <p className="text-stone-400 text-sm mt-1.5">Arraste ou clique · foto ou vídeo</p>
+          <div className="flex justify-center gap-1.5 mt-4 flex-wrap">
+            {['JPG','PNG','TIFF','MP4','AVI','MOV'].map(f=>(
+              <span key={f} style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px'}} className="px-2 py-0.5 bg-stone-100 text-stone-500 rounded-md">{f}</span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   METRIC TILE
+══════════════════════════════════════════════ */
+function Tile({label,value,sub,big,tooltip,accent}){
+  const [show,setShow]=useState(false);
+  return(
+    <div className={`relative bg-white rounded-xl p-4 border shadow-sm tile-hover ${accent?'border-amber-200 bg-amber-50/40':'border-gray-100'}`}
+      onMouseEnter={()=>tooltip&&setShow(true)} onMouseLeave={()=>setShow(false)}>
+      <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'6px'}}>{label}</p>
+      <p style={{fontFamily:'JetBrains Mono,monospace',fontWeight:700,color:'#1c1917',fontSize:big?'22px':'15px'}}>{value}</p>
+      {sub&&<p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      {show&&tooltip&&(
+        <div className="absolute bottom-full left-0 mb-2 w-56 bg-stone-950 text-stone-300 text-xs rounded-xl p-3 shadow-2xl z-20 fade-in border border-stone-800">
+          {tooltip}
+          <div className="absolute bottom-[-5px] left-4 w-2.5 h-2.5 bg-stone-950 rotate-45 border-r border-b border-stone-800"/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   RESULT CARD
+══════════════════════════════════════════════ */
+function ResultCard({res,id}){
+  const s=icumsaStyle(res.icumsa_estimado);
+  return(
+    <div id={id} className={`rounded-2xl border-2 overflow-hidden fade-up ${s.border}`}>
+      {/* Header */}
+      <div className={`px-5 py-5 ${s.bg}`}>
+        {/* linha topo: título + badges */}
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <div className="min-w-0">
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',letterSpacing:'0.12em',textTransform:'uppercase',opacity:.4,marginBottom:'4px'}} className={s.text}>
+              Classificação ICUMSA
+            </p>
+            <h2 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'22px',fontWeight:700,fontStyle:'italic',lineHeight:1.15}} className={s.text}>
+              {res.classe}
+            </h2>
+            <p className={`text-sm mt-1 opacity-60 truncate ${s.text}`}>{res.descricao}</p>
+          </div>
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <span className={`text-xs px-3 py-1.5 rounded-full font-semibold whitespace-nowrap ${s.pill}`}
+              style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px'}}>
+              {s.label}
+            </span>
+            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap ${confStyle(res.confianca)}`}>
+              Confiança {res.confianca}
+            </span>
+            <TrendBadge trend={res.tendencia}/>
+          </div>
+        </div>
+        {/* swatch separado, linha própria */}
+        <div className="pt-2 border-t border-black/5">
+          <ColorSwatch R={res.R_medio} G={res.G_medio} B={res.B_medio}/>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className={`p-5 space-y-3 ${s.bg}`}>
+        {/* Main metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Tile big accent label="ICUMSA" value={`${Math.round(res.icumsa_estimado)}`}
+            sub={`IU · ${res.icumsa_faixa||''}`}
+            tooltip="Unidade padrão de cor do açúcar. Menor = mais branco e refinado."/>
+          <Tile big label="Score Brancura" value={res.score_brancura?.toFixed(1)}
+            sub="escala 0–100"
+            tooltip="Índice visual: 0.8 × L* com penalização por amarelamento b*."/>
+          <Tile label="Norma" value={res.norma||'—'}
+            sub="ICUMSA Intl."
+            tooltip="Norma internacional de referência para esta classificação."/>
+          <Tile label="EWMA" value={`${res.ewma_icumsa||'—'} IU`}
+            sub="média móvel exp."
+            tooltip="Média móvel exponencial (span=10) das últimas análises."/>
+        </div>
+
+        {/* LAB + RGB */}
+        <div className="bg-white/65 rounded-xl p-4 border border-white">
+          <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'10px'}}>
+            Canais de Cor · CIE LAB + RGB
+          </p>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
+            <Tile label="L*" value={fmt(res.L_star??res.L,2)} tooltip="Luminosidade: 0=preto, 100=branco"/>
+            <Tile label="a*" value={fmt(res.a,3)} tooltip="Verde (−) ↔ Vermelho (+). No açúcar, próximo de 0."/>
+            <Tile label="b*" value={fmt(res.b_star??res.b,2)} tooltip="Azul (−) ↔ Amarelo (+). Altos = amarelamento."/>
+            <Tile label="R" value={Math.round(res.R_medio??0)} tooltip="Canal vermelho RGB (0–255)"/>
+            <Tile label="G" value={Math.round(res.G_medio??0)} tooltip="Canal verde RGB (0–255)"/>
+            <Tile label="B" value={Math.round(res.B_medio??0)} tooltip="Canal azul RGB (0–255)"/>
+          </div>
+        </div>
+
+        {/* ICUMSA spectrum */}
+        <div className="bg-white/65 rounded-xl p-4 border border-white">
+          <ICUMSASpectrum value={res.icumsa_estimado}/>
+        </div>
+
+        {res.tipo_entrada==='video'&&(
+          <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px',color:'#9ca3af',letterSpacing:'0.06em',textAlign:'center'}}>
+            VÍDEO · {res.frames_analisados} FRAMES EXTRAÍDOS · FRAME CENTRAL ANALISADO
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   PAGE: ANÁLISE
+══════════════════════════════════════════════ */
+function PageAnalise(){
+  const [resultado,setResultado]=useState(null);
+  const [preview,setPreview]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [erro,setErro]=useState(null);
+
+  const handleFile=async(file)=>{
+    setErro(null);setResultado(null);
+    setPreview({url:URL.createObjectURL(file),isVideo:file.type.startsWith('video')});
+    setLoading(true);
+    const form=new FormData();
+    form.append('file',file);
+    try{
+      const r=await fetch(`${API}/analisar`,{method:'POST',body:form});
+      if(!r.ok){const e=await r.json();throw new Error(e.detail??'Erro desconhecido');}
+      setResultado(await r.json());
+    }catch(e){setErro(e.message);}
+    finally{setLoading(false);}
+  };
+
+  return(
+    <div className="space-y-6">
+      <div>
+        <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'30px',fontWeight:700,fontStyle:'italic',color:'#1c1917'}}>
+          Análise de Amostra
+        </h1>
+        <p className="text-stone-400 text-sm mt-1">Classificação automática · padrão ICUMSA internacional</p>
+      </div>
+
+      {/* Upload row: zona + preview lado a lado, compacto */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <UploadZone onFile={handleFile} loading={loading} id="upload-zone"/>
+        {preview?(
+          <div className="rounded-2xl overflow-hidden border-2 border-amber-200 shadow-sm fade-up h-full min-h-[160px]">
+            {preview.isVideo
+              ?<video src={preview.url} controls className="w-full h-full object-cover"/>
+              :<img src={preview.url} alt="Preview" className="w-full h-full object-cover" style={{maxHeight:'240px'}}/>
+            }
+          </div>
+        ):(
+          <div className="rounded-2xl border-2 border-dashed border-amber-100 bg-amber-50/10 flex items-center justify-center min-h-[160px]">
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#d6d3d1',letterSpacing:'0.08em'}}>preview aqui</p>
+          </div>
+        )}
+      </div>
+
+      {erro&&(
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm fade-up">
+          ⚠ {erro}
+        </div>
+      )}
+
+      {/* Resultado: full width, respira */}
+      {resultado
+        ?<ResultCard res={resultado} id="result-card"/>
+        :(
+          <div className="rounded-2xl border-2 border-dashed border-amber-100 flex items-center justify-center py-14 text-center bg-amber-50/10">
+            <div>
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-300">
+                <div className="w-6 h-6"><Icon.Chart/></div>
+              </div>
+              <p className="font-medium text-stone-400 text-sm">Aguardando amostra</p>
+              <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px',color:'#d6d3d1',marginTop:'4px'}}>resultado aparecerá aqui após análise</p>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Reference table */}
+      <div className="bg-white rounded-2xl border border-amber-100 overflow-hidden shadow-sm">
+        <div className="bg-stone-900 px-5 py-3.5 flex items-center gap-2">
+          <span style={{fontFamily:'Playfair Display,Georgia,serif',color:'white',fontWeight:600,fontSize:'14px',fontStyle:'italic'}}>
+            Tabela ICUMSA Internacional
+          </span>
+          <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px',color:'#57534e',marginLeft:'auto'}}>GS — ICUMSA 2011</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 border-b border-stone-100">
+                {['Classe','Norma','Faixa ICUMSA','Pureza','Descrição'].map(h=>(
+                  <th key={h} className="px-4 py-3 text-left"
+                    style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ['Açúcar Branco','GS1/2/3-1','≤ 45 IU','≥ 99.7%','Refinado premium'],
+                ['Açúcar Branco Padrão','GS2/3-2','46–150 IU','≥ 99.5%','Refinado padrão'],
+                ['VHP / Demerara','GS2-37','151–600 IU','≥ 98%','Parcialmente refinado'],
+                ['Mascavo / Bruto','GS2-13','> 600 IU','≥ 97.5%','Não refinado'],
+              ].map(([c,n,f,p,d],i)=>(
+                <tr key={i} className={`border-t border-gray-100 ${i%2?'bg-stone-50/30':''}`}>
+                  <td className="px-4 py-3 font-semibold text-stone-800">{c}</td>
+                  <td className="px-4 py-3 text-amber-600" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}}>{n}</td>
+                  <td className="px-4 py-3 font-bold text-stone-700" style={{fontFamily:'JetBrains Mono,monospace'}}>{f}</td>
+                  <td className="px-4 py-3 text-stone-500">{p}</td>
+                  <td className="px-4 py-3 text-stone-400">{d}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   PAGE: HISTÓRICO
+══════════════════════════════════════════════ */
+function PageHistorico(){
+  const [data,setData]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  const load=async()=>{
+    setLoading(true);
+    try{const r=await fetch(`${API}/historico`);setData(await r.json());}
+    catch{}finally{setLoading(false);}
+  };
+
+  const limpar=async()=>{
+    if(!confirm('Limpar todo o histórico?')) return;
+    await fetch(`${API}/historico`,{method:'DELETE'});
+    setData([]);
+  };
+
+  const exportCSV=()=>{
+    const cols=['id','timestamp','L','a','b','delta_e','status','created_at'];
+    const rows=data.map(r=>cols.map(c=>r[c]??'').join(','));
+    const blob=new Blob([cols.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='historico_icumsa.csv';a.click();
+  };
+
+  useEffect(()=>{load();},[]);
+
+  const avg=data.length?(data.reduce((s,d)=>s+(Number(d.delta_e)||0),0)/data.length).toFixed(1):null;
+  const best=data.length?Math.min(...data.map(d=>Number(d.delta_e)||9999)).toFixed(0):null;
+
+  return(
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'30px',fontWeight:700,fontStyle:'italic',color:'#1c1917'}}>
+            Histórico
+          </h1>
+          <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',color:'#9ca3af',marginTop:'4px'}}>
+            {data.length} análise(s) registrada(s)
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {data.length>0&&<>
+            <button onClick={exportCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-xl text-sm font-medium hover:bg-amber-50 transition-all">
+              <span className="w-4 h-4"><Icon.Download/></span>CSV
+            </button>
+            <button onClick={limpar}
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-100 transition-all">
+              <span className="w-4 h-4"><Icon.Trash/></span>Limpar
+            </button>
+          </>}
+          <button onClick={load}
+            className="px-4 py-2 bg-amber-700 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 transition-all">
+            Atualizar
+          </button>
+        </div>
+      </div>
+
+      {data.length>0&&(
+        <div className="grid grid-cols-3 gap-3 fade-up">
+          {[
+            {label:'Total análises',value:data.length,color:'#1c1917'},
+            {label:'Média ICUMSA',value:`${avg} IU`,color:'#b45309'},
+            {label:'Melhor leitura',value:`${best} IU`,color:'#047857'},
+          ].map(({label,value,color})=>(
+            <div key={label} className="bg-white rounded-xl border border-amber-100 p-4 shadow-sm">
+              <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'6px'}}>{label}</p>
+              <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'22px',fontWeight:700,color}}>{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {loading?(
+        <div className="flex justify-center py-16">
+          <svg className="spinner w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+      ):data.length===0?(
+        <div className="bg-white rounded-2xl border border-amber-100 p-16 text-center">
+          <p className="text-amber-200 text-5xl mb-4">📋</p>
+          <p className="font-semibold text-stone-600">Nenhuma análise registrada</p>
+          <p className="text-stone-400 text-sm mt-1">Envie amostras na aba Análise</p>
+        </div>
+      ):(
+        <>
+          <HistoryChart data={data}/>
+          <div className="bg-white rounded-2xl border border-amber-100 overflow-hidden shadow-sm fade-up">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-900">
+                    {['#','Horário','Classe','ICUMSA','L*','a*','b*'].map(h=>(
+                      <th key={h} className="px-4 py-3 text-left"
+                        style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#57534e',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((r,i)=>{
+                    const s=icumsaStyle(r.delta_e??9999);
+                    return(
+                      <tr key={i} className={`border-t border-gray-100 hover:bg-amber-50/20 transition-colors ${i%2?'bg-stone-50/30':''}`}>
+                        <td className="px-4 py-3" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#d1d5db'}}>{r.id}</td>
+                        <td className="px-4 py-3" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#9ca3af'}}>{fmtTime(r.created_at)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-1 rounded-full font-semibold ${s.pill}`}
+                            style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px'}}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-bold text-stone-700" style={{fontFamily:'JetBrains Mono,monospace'}}>{fmt(r.delta_e,0)}</td>
+                        <td className="px-4 py-3" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',color:'#78716c'}}>{fmt(r.L,2)}</td>
+                        <td className="px-4 py-3" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',color:'#78716c'}}>{fmt(r.a,3)}</td>
+                        <td className="px-4 py-3" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',color:'#78716c'}}>{fmt(r.b,2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   PAGE: MONITORAMENTO
+══════════════════════════════════════════════ */
+function PageMonitoramento(){
+  const [file,setFile]=useState(null);
+  const [sampleRate,setSampleRate]=useState(5);
+  const [loading,setLoading]=useState(false);
+  const [data,setData]=useState(null);
+  const [playIdx,setPlayIdx]=useState(0);
+  const [playing,setPlaying]=useState(false);
+  const [playSpeed,setPlaySpeed]=useState(500);
+  const timerRef=useRef(null);
+  const videoRef=useRef(null);
+  const [videoReady,setVideoReady]=useState(false);
+  const [fileUrl,setFileUrl]=useState(null);
+
+  const handleFile=async(f)=>{
+    setFile(f);setData(null);setPlayIdx(0);setPlaying(false);setVideoReady(false);
+    if(fileUrl)URL.revokeObjectURL(fileUrl);
+    setFileUrl(URL.createObjectURL(f));
+  };
+
+  const analisar=async()=>{
+    if(!file)return;
+    setLoading(true);setData(null);setPlayIdx(0);setPlaying(false);
+    const form=new FormData();
+    form.append('file',file);
+    try{
+      const r=await fetch(`${API}/monitoramento/video?sample_rate=${sampleRate}`,{method:'POST',body:form});
+      if(!r.ok){const e=await r.json();throw new Error(e.detail??'Erro');}
+      const d=await r.json();
+      setData(d);
+    }catch(e){alert('Erro: '+e.message);}
+    finally{setLoading(false);}
+  };
+
+  const togglePlay=()=>{
+    if(!data)return;
+    setPlaying(p=>{
+      if(!p){
+        // start
+        timerRef.current=setInterval(()=>{
+          setPlayIdx(i=>{
+            const next=i+1;
+            if(next>=data.resultados.length){clearInterval(timerRef.current);setPlaying(false);return i;}
+            return next;
+          });
+        },playSpeed);
+        return true;
+      } else {
+        clearInterval(timerRef.current);
+        return false;
+      }
+    });
+  };
+
+  useEffect(()=>{
+    return()=>{clearInterval(timerRef.current);};
+  },[]);
+
+  useEffect(()=>{
+    const v=videoRef.current;
+    if(!v||!videoReady||!data?.resultados[playIdx])return;
+    const cur=data.resultados[playIdx];
+    if(v.duration)v.currentTime=(cur.frame_idx/cur.total_frames_video)*v.duration;
+  },[playIdx,videoReady]);
+
+  const cur=data?.resultados[playIdx];
+  const mudancas=data?.resultados.filter(r=>r.mudanca_detectada)||[];
+
+  return(
+    <div className="space-y-5">
+      <div>
+        <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'30px',fontWeight:700,fontStyle:'italic',color:'#1c1917'}}>Monitoramento</h1>
+        <p className="text-stone-400 text-sm mt-1">Simula feed de câmera · detecta mudança de tipo de açúcar</p>
+      </div>
+
+      {/* Config */}
+      <div className="bg-white rounded-2xl border border-amber-100 p-5 space-y-4">
+        <div className="grid sm:grid-cols-3 gap-4 items-end">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-stone-500 mb-1.5">Vídeo para monitoramento</label>
+            <div
+              onClick={()=>document.getElementById('mon-input').click()}
+              className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all
+                ${file?'border-amber-400 bg-amber-50':'border-amber-200 bg-white hover:border-amber-400 hover:bg-amber-50/30'}`}>
+              <input id="mon-input" type="file" accept="video/*" style={{display:'none'}} onChange={e=>handleFile(e.target.files[0])}/>
+              {file?(
+                <p className="font-semibold text-amber-800">{file.name} <span className="text-stone-400 text-xs ml-2">({(file.size/1024/1024).toFixed(1)} MB)</span></p>
+              ):(
+                <p className="text-stone-400 text-sm">Clique para selecionar vídeo (MP4, AVI, MOV)</p>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-500 mb-1.5">Analisar 1 a cada N frames</label>
+            <input type="number" min={1} max={60} value={sampleRate} onChange={e=>setSampleRate(Number(e.target.value))}
+              className="w-full border border-stone-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-amber-400"/>
+          </div>
+        </div>
+        <button onClick={analisar} disabled={!file||loading}
+          className={`w-full py-3 rounded-xl font-semibold text-sm transition-all
+            ${!file||loading?'bg-stone-100 text-stone-400 cursor-not-allowed':'bg-amber-700 hover:bg-amber-600 text-white'}`}>
+          {loading?(
+            <span className="flex items-center justify-center gap-2">
+              <svg className="spinner w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Analisando frames...
+            </span>
+          ):'▶ Analisar Vídeo'}
+        </button>
+      </div>
+
+      {/* Video Preview */}
+      {fileUrl&&(
+        <div className="bg-black rounded-2xl overflow-hidden border border-stone-800">
+          <div className="relative" style={{aspectRatio:'16/9'}}>
+            <video ref={videoRef} src={fileUrl}
+              className="w-full h-full object-contain"
+              onLoadedMetadata={()=>setVideoReady(true)}
+              muted/>
+            {loading&&(
+              <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center gap-3">
+                <svg className="spinner w-10 h-10 text-amber-400" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                <p className="text-amber-300 font-bold text-sm">Analisando frames...</p>
+              </div>
+            )}
+            {!loading&&cur?.mudanca_detectada&&(
+              <div className="absolute top-3 inset-x-3 flex items-center gap-3 bg-red-600/90 backdrop-blur-sm rounded-xl px-4 py-3 shadow-lg">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <p className="font-bold text-white text-sm">MUDANÇA DETECTADA</p>
+                  <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}} className="text-red-200">{cur.classe_anterior} → {cur.classe}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Playback */}
+      {data&&(
+        <>
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              {label:'Frames analisados',value:data.frames_analisados,sub:`de ${data.total_frames_video} total`},
+              {label:'Mudanças detectadas',value:data.total_mudancas,sub:'de tipo de açúcar',accent:data.total_mudancas>0},
+              {label:'Taxa de amostragem',value:`1/${data.sample_rate}`,sub:'frames'},
+            ].map(({label,value,sub,accent})=>(
+              <div key={label} className={`bg-white rounded-xl border p-4 shadow-sm ${accent?'border-red-300 bg-red-50':'border-amber-100'}`}>
+                <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'6px'}}>{label}</p>
+                <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'22px',fontWeight:700,color:accent?'#dc2626':'#1c1917'}}>{value}</p>
+                {sub&&<p className="text-xs text-stone-400 mt-0.5">{sub}</p>}
+              </div>
+            ))}
+          </div>
+
+          {/* Player */}
+          <div className="bg-white rounded-2xl border border-amber-100 p-5">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+                Reprodução — Frame {playIdx+1}/{data.resultados.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-stone-400">Velocidade (ms)</label>
+                <input type="range" min={100} max={2000} step={100} value={playSpeed}
+                  onChange={e=>{setPlaySpeed(Number(e.target.value));if(playing){clearInterval(timerRef.current);timerRef.current=setInterval(()=>{setPlayIdx(i=>{const next=i+1;if(next>=data.resultados.length){clearInterval(timerRef.current);setPlaying(false);return i;}return next;});},Number(e.target.value));}}}
+                  className="w-24 accent-amber-600"/>
+                <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#9ca3af'}}>{playSpeed}ms</span>
+                <button onClick={()=>setPlayIdx(0)} className="px-3 py-1.5 text-xs bg-stone-100 hover:bg-stone-200 rounded-lg font-mono transition-all">⏮</button>
+                <button onClick={togglePlay}
+                  className={`px-4 py-1.5 text-xs rounded-lg font-semibold transition-all ${playing?'bg-red-600 hover:bg-red-500 text-white':'bg-amber-700 hover:bg-amber-600 text-white'}`}>
+                  {playing?'⏸ Pausar':'▶ Play'}
+                </button>
+              </div>
+            </div>
+
+            {/* Timeline slider */}
+            <input type="range" min={0} max={data.resultados.length-1} value={playIdx}
+              onChange={e=>{setPlayIdx(Number(e.target.value));}}
+              className="w-full accent-amber-600 mb-4"/>
+
+            {/* Current frame result */}
+            {cur&&(()=>{
+              const s=icumsaStyle(cur.icumsa_estimado);
+              return(
+                <div className={`rounded-xl border-2 p-4 ${s.border} ${s.bg}`}>
+                  {cur.mudanca_detectada&&(
+                    <div className="mb-3 bg-red-50 border border-red-300 rounded-lg px-4 py-2.5 flex items-center gap-2">
+                      <span className="text-red-500 text-lg">⚠️</span>
+                      <div>
+                        <p className="font-bold text-red-700 text-sm">MUDANÇA DETECTADA</p>
+                        <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#9ca3af'}}>
+                          {cur.classe_anterior} → {cur.classe}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.1em',textTransform:'uppercase'}}>
+                        Frame {cur.frame_idx} de {cur.total_frames_video}
+                      </p>
+                      <h3 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'20px',fontWeight:700,fontStyle:'italic'}} className={s.text}>
+                        {cur.classe}
+                      </h3>
+                    </div>
+                    <div className="flex gap-3 flex-wrap">
+                      <Tile label="ICUMSA" value={`${Math.round(cur.icumsa_estimado)} IU`}/>
+                      <Tile label="Score" value={cur.score_brancura?.toFixed(1)}/>
+                      <Tile label="L*" value={cur.L?.toFixed(2)}/>
+                      <Tile label="Confiança" value={cur.confianca}/>
+                      <div className="flex items-center">
+                        <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'10px'}}
+                          className={`px-2 py-1 rounded-full ${cur.fonte==='ML'?'bg-blue-100 text-blue-700':'bg-stone-100 text-stone-600'}`}>
+                          {cur.fonte==='ML'?'🤖 ML':'📏 Regras'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <ICUMSASpectrum value={cur.icumsa_estimado}/>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Change log */}
+          {mudancas.length>0&&(
+            <div className="bg-white rounded-2xl border border-red-200 overflow-hidden shadow-sm">
+              <div className="bg-red-700 px-5 py-3 flex items-center gap-2">
+                <span className="text-white text-sm font-bold">⚠️ Log de Mudanças ({mudancas.length})</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-stone-50 border-b border-stone-100">
+                      {['Frame','De','Para','ICUMSA'].map(h=>(
+                        <th key={h} className="px-4 py-3 text-left"
+                          style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mudancas.map((m,i)=>(
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-4 py-3" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}}>{m.frame_idx}</td>
+                        <td className="px-4 py-3 text-stone-500 text-xs">{m.classe_anterior}</td>
+                        <td className="px-4 py-3 font-semibold text-red-700 text-xs">{m.classe}</td>
+                        <td className="px-4 py-3" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}}>{Math.round(m.icumsa_estimado)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   PAGE: TREINO
+══════════════════════════════════════════════ */
+function PageTreino(){
+  const [stats,setStats]=useState(null);
+  const [amostras,setAmostras]=useState([]);
+  const [loadingStats,setLoadingStats]=useState(true);
+  const [treinando,setTreinando]=useState(false);
+  const [resultado,setResultado]=useState(null);
+
+  // labeling state
+  const [labelFile,setLabelFile]=useState(null);
+  const [labelPreview,setLabelPreview]=useState(null);
+  const [labelAnalise,setLabelAnalise]=useState(null);
+  const [labelClasse,setLabelClasse]=useState('');
+  const [salvando,setSalvando]=useState(false);
+
+  const loadStats=async()=>{
+    setLoadingStats(true);
+    try{
+      const [sr,ar]=await Promise.all([
+        fetch(`${API}/treino/stats`).then(r=>r.json()),
+        fetch(`${API}/treino/amostras`).then(r=>r.json()),
+      ]);
+      setStats(sr);setAmostras(ar);
+      if(!labelClasse&&sr.classes_disponiveis?.length) setLabelClasse(sr.classes_disponiveis[0]);
+    }catch{}finally{setLoadingStats(false);}
+  };
+
+  useEffect(()=>{loadStats();},[]);
+
+  const handleLabelFile=async(f)=>{
+    setLabelFile(f);setLabelAnalise(null);
+    setLabelPreview(URL.createObjectURL(f));
+    const form=new FormData();form.append('file',f);
+    try{
+      const r=await fetch(`${API}/analisar`,{method:'POST',body:form});
+      if(r.ok) setLabelAnalise(await r.json());
+    }catch{}
+  };
+
+  const salvarAmostra=async()=>{
+    if(!labelAnalise||!labelClasse)return;
+    setSalvando(true);
+    try{
+      const payload={
+        L:labelAnalise.L_star??labelAnalise.L,
+        a:labelAnalise.a,
+        b:labelAnalise.b_star??labelAnalise.b,
+        score_brancura:labelAnalise.score_brancura,
+        R_medio:labelAnalise.R_medio??0,
+        G_medio:labelAnalise.G_medio??0,
+        B_medio:labelAnalise.B_medio??0,
+        classe:labelClasse,
+      };
+      const r=await fetch(`${API}/treino/amostra`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok) throw new Error('Falha ao salvar');
+      await loadStats();
+      setLabelFile(null);setLabelPreview(null);setLabelAnalise(null);
+    }catch(e){alert('Erro: '+e.message);}
+    finally{setSalvando(false);}
+  };
+
+  const treinar=async()=>{
+    setTreinando(true);setResultado(null);
+    try{
+      const r=await fetch(`${API}/treino/treinar`,{method:'POST'});
+      if(!r.ok){const e=await r.json();throw new Error(e.detail);}
+      setResultado(await r.json());
+      await loadStats();
+    }catch(e){alert('Erro: '+e.message);}
+    finally{setTreinando(false);}
+  };
+
+  const toggleModelo=async(ativo)=>{
+    await fetch(`${API}/treino/modelo/ativar`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ativo})});
+    await loadStats();
+  };
+
+  const deletarAmostra=async(id)=>{
+    await fetch(`${API}/treino/amostra/${id}`,{method:'DELETE'});
+    await loadStats();
+  };
+
+  const limparTudo=async()=>{
+    if(!confirm('Limpar todas as amostras?'))return;
+    await fetch(`${API}/treino/amostras`,{method:'DELETE'});
+    await loadStats();
+  };
+
+  const podeTreinar=stats&&stats.total>=10&&Object.keys(stats.por_classe||{}).length>=2;
+
+  return(
+    <div className="space-y-5">
+      <div>
+        <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'30px',fontWeight:700,fontStyle:'italic',color:'#1c1917'}}>Treino do Classificador</h1>
+        <p className="text-stone-400 text-sm mt-1">Rotule amostras · treine modelo ML · substitui regras fixas</p>
+      </div>
+
+      {/* Status cards */}
+      {stats&&(
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl border border-amber-100 p-4 shadow-sm">
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'6px'}}>Total amostras</p>
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'28px',fontWeight:700,color:'#1c1917'}}>{stats.total}</p>
+            <p className="text-xs text-stone-400 mt-1">mínimo 10 de ≥2 classes</p>
+          </div>
+          <div className="bg-white rounded-xl border border-amber-100 p-4 shadow-sm">
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'6px'}}>Modelo treinado</p>
+            <p style={{fontSize:'24px'}}>{stats.modelo_treinado?'✅':'❌'}</p>
+            {stats.modelo_treinado&&(
+              <button onClick={()=>toggleModelo(!stats.modelo_ativo)}
+                className={`mt-2 text-xs px-3 py-1 rounded-full font-semibold border transition-all
+                  ${stats.modelo_ativo?'bg-blue-100 text-blue-700 border-blue-200':'bg-stone-100 text-stone-500 border-stone-200'}`}>
+                {stats.modelo_ativo?'🤖 ML Ativo — desativar':'📏 Regras — ativar ML'}
+              </button>
+            )}
+          </div>
+          <div className="bg-white rounded-xl border border-amber-100 p-4 shadow-sm">
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'8px'}}>Por classe</p>
+            {Object.entries(stats.por_classe||{}).map(([cls,cnt])=>(
+              <div key={cls} className="flex justify-between items-center mb-1.5">
+                <span className="text-xs text-stone-600 truncate max-w-[70%]">{cls.replace('Acucar ','')}</span>
+                <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:700,color:'#b45309'}}>{cnt}</span>
+              </div>
+            ))}
+            {!Object.keys(stats.por_classe||{}).length&&<p className="text-xs text-stone-400">Nenhuma amostra ainda</p>}
+          </div>
+        </div>
+      )}
+
+      {resultado&&(
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 fade-up">
+          <p className="font-bold text-emerald-700">✅ Modelo treinado com sucesso!</p>
+          {resultado.acuracia_cv!=null&&(
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'14px',color:'#065f46',marginTop:'4px'}}>
+              Acurácia CV: <strong>{resultado.acuracia_cv}%</strong>
+            </p>
+          )}
+          <p className="text-sm text-emerald-600 mt-1">Modelo ML ativado automaticamente para todas as análises.</p>
+        </div>
+      )}
+
+      {/* Rotulagem */}
+      <div className="bg-white rounded-2xl border border-amber-100 p-5">
+        <h2 className="font-semibold text-stone-800 mb-4" style={{fontFamily:'Playfair Display,Georgia,serif',fontStyle:'italic'}}>Adicionar Amostra Rotulada</h2>
+        <div className="grid sm:grid-cols-2 gap-5">
+          <div>
+            <div
+              onClick={()=>document.getElementById('label-input').click()}
+              className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all mb-3
+                ${labelFile?'border-amber-400 bg-amber-50':'border-amber-200 hover:border-amber-400 hover:bg-amber-50/30'}`}>
+              <input id="label-input" type="file" accept="image/*" style={{display:'none'}} onChange={e=>handleLabelFile(e.target.files[0])}/>
+              {labelPreview?(
+                <img src={labelPreview} alt="preview" className="w-full max-h-40 object-cover rounded-lg"/>
+              ):(
+                <p className="text-stone-400 text-sm py-4">Clique para selecionar foto da amostra</p>
+              )}
+            </div>
+          </div>
+          <div className="space-y-3">
+            {labelAnalise&&(
+              <div className={`rounded-xl border-2 p-3 ${icumsaStyle(labelAnalise.icumsa_estimado).border} ${icumsaStyle(labelAnalise.icumsa_estimado).bg}`}>
+                <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:'4px'}}>
+                  Classificação automática
+                </p>
+                <p className="font-bold text-stone-800">{labelAnalise.classe}</p>
+                <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#9ca3af'}}>
+                  ICUMSA ~{Math.round(labelAnalise.icumsa_estimado)} · Score {labelAnalise.score_brancura?.toFixed(1)} · {labelAnalise.fonte==='ML'?'🤖 ML':'📏 Regras'}
+                </p>
+              </div>
+            )}
+            {stats?.classes_disponiveis&&(
+              <div>
+                <label className="block text-xs font-semibold text-stone-500 mb-1.5">Classe correta</label>
+                <select value={labelClasse} onChange={e=>setLabelClasse(e.target.value)}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400">
+                  {stats.classes_disponiveis.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            )}
+            <button onClick={salvarAmostra} disabled={!labelAnalise||!labelClasse||salvando}
+              className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all
+                ${!labelAnalise||!labelClasse||salvando?'bg-stone-100 text-stone-400 cursor-not-allowed':'bg-amber-700 hover:bg-amber-600 text-white'}`}>
+              {salvando?'Salvando...':'✅ Confirmar e Salvar'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Treinar */}
+      <div className="bg-white rounded-2xl border border-amber-100 p-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="font-semibold text-stone-800" style={{fontFamily:'Playfair Display,Georgia,serif',fontStyle:'italic'}}>Treinar Modelo</h2>
+            {!podeTreinar&&(
+              <p className="text-sm text-amber-700 mt-1">
+                {stats?.total<10?`Faltam ${10-(stats?.total||0)} amostras`:'Adicione amostras de pelo menos 2 classes'}
+              </p>
+            )}
+          </div>
+          <button onClick={treinar} disabled={!podeTreinar||treinando}
+            className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition-all
+              ${!podeTreinar||treinando?'bg-stone-100 text-stone-400 cursor-not-allowed':'bg-stone-900 hover:bg-stone-800 text-white'}`}>
+            {treinando?(
+              <span className="flex items-center gap-2">
+                <svg className="spinner w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                Treinando...
+              </span>
+            ):'🚀 Treinar RandomForest'}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabela amostras */}
+      {amostras.length>0&&(
+        <div className="bg-white rounded-2xl border border-amber-100 overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between px-5 py-3 bg-stone-50 border-b border-stone-100">
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+              {amostras.length} amostras coletadas
+            </p>
+            <button onClick={limparTudo} className="text-xs text-red-600 hover:text-red-500 font-medium">Limpar todas</button>
+          </div>
+          <div className="overflow-x-auto max-h-60">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-stone-900 sticky top-0">
+                  {['#','L*','a*','b*','Score','Classe'].map(h=>(
+                    <th key={h} className="px-4 py-2.5 text-left"
+                      style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#57534e',letterSpacing:'0.12em',textTransform:'uppercase'}}>{h}</th>
+                  ))}
+                  <th className="px-4 py-2.5"/>
+                </tr>
+              </thead>
+              <tbody>
+                {amostras.map((a,i)=>(
+                  <tr key={a.id} className={`border-t border-gray-100 ${i%2?'bg-stone-50/30':''}`}>
+                    <td className="px-4 py-2" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#d1d5db'}}>{a.id}</td>
+                    <td className="px-4 py-2" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}}>{fmt(a.L,2)}</td>
+                    <td className="px-4 py-2" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}}>{fmt(a.a,3)}</td>
+                    <td className="px-4 py-2" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}}>{fmt(a.b,2)}</td>
+                    <td className="px-4 py-2" style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px'}}>{fmt(a.score_brancura,1)}</td>
+                    <td className="px-4 py-2 text-xs text-stone-600">{a.classe.replace('Acucar ','')}</td>
+                    <td className="px-4 py-2">
+                      <button onClick={()=>deletarAmostra(a.id)} className="text-red-400 hover:text-red-600 text-xs font-mono">✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   PAGE: CALIBRAÇÃO
+══════════════════════════════════════════════ */
+function PageCalibracao(){
+  const [status,setStatus]=useState(null);
+  const [file,setFile]=useState(null);
+  const [preview,setPreview]=useState(null);
+  const [Lalvo,setLalvo]=useState(96.0);
+  const [aalvo,setAalvo]=useState(0.0);
+  const [balvo,setBalvo]=useState(2.0);
+  const [calibrando,setCalibrando]=useState(false);
+  const [resultado,setResultado]=useState(null);
+
+  const loadStatus=async()=>{
+    try{const r=await fetch(`${API}/calibrar/status`);setStatus(await r.json());}catch{}
+  };
+
+  useEffect(()=>{loadStatus();},[]);
+
+  const calibrar=async()=>{
+    if(!file)return;
+    setCalibrando(true);setResultado(null);
+    const form=new FormData();form.append('file',file);
+    try{
+      const r=await fetch(`${API}/calibrar?L_alvo=${Lalvo}&a_alvo=${aalvo}&b_alvo=${balvo}`,{method:'POST',body:form});
+      if(!r.ok){const e=await r.json();throw new Error(e.detail);}
+      setResultado(await r.json());
+      await loadStatus();
+    }catch(e){alert('Erro: '+e.message);}
+    finally{setCalibrando(false);}
+  };
+
+  const resetar=async()=>{
+    if(!confirm('Resetar calibração?'))return;
+    await fetch(`${API}/calibrar`,{method:'DELETE'});
+    setResultado(null);await loadStatus();
+  };
+
+  return(
+    <div className="space-y-5 max-w-2xl">
+      <div>
+        <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'30px',fontWeight:700,fontStyle:'italic',color:'#1c1917'}}>Calibração de Iluminação</h1>
+        <p className="text-stone-400 text-sm mt-1">Corrige desvios sistemáticos de luz para melhorar precisão</p>
+      </div>
+
+      {/* Status atual */}
+      {status&&(
+        <div className={`rounded-xl border px-5 py-4 flex items-center justify-between flex-wrap gap-3
+          ${status.calibrado?'bg-emerald-50 border-emerald-200':'bg-stone-50 border-stone-200'}`}>
+          <div>
+            <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'4px'}}>
+              Status atual
+            </p>
+            <p className={`font-semibold text-sm ${status.calibrado?'text-emerald-700':'text-stone-500'}`}>{status.status}</p>
+            {status.calibrado&&(
+              <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#9ca3af',marginTop:'4px'}}>
+                ΔL{status.offset_L>0?'+':''}{status.offset_L} · Δa{status.offset_a>0?'+':''}{status.offset_a} · Δb{status.offset_b>0?'+':''}{status.offset_b}
+              </p>
+            )}
+          </div>
+          {status.calibrado&&(
+            <button onClick={resetar} className="text-xs text-red-600 hover:text-red-500 font-medium px-3 py-1.5 border border-red-200 rounded-lg">Resetar</button>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-amber-100 p-5 space-y-5">
+        <div>
+          <h2 className="font-semibold text-stone-700 mb-1" style={{fontFamily:'Playfair Display,Georgia,serif',fontStyle:'italic'}}>Como funciona</h2>
+          <p className="text-sm text-stone-400 leading-relaxed">
+            Fotografe um material branco de referência (papel sulfite, ColorChecker) sob a mesma iluminação da linha de produção.
+            Informe os valores L* a* b* reais do material. O sistema calcula os offsets e os aplica em todas as análises futuras.
+          </p>
+        </div>
+
+        {/* Upload referência */}
+        <div>
+          <label className="block text-xs font-semibold text-stone-500 mb-1.5">Foto do material de referência branco</label>
+          <div
+            onClick={()=>document.getElementById('cal-input').click()}
+            className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all
+              ${file?'border-amber-400 bg-amber-50':'border-amber-200 hover:border-amber-400 hover:bg-amber-50/30'}`}>
+            <input id="cal-input" type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setFile(e.target.files[0]);setPreview(URL.createObjectURL(e.target.files[0]));}}/>
+            {preview?(
+              <img src={preview} alt="referência" className="max-h-36 mx-auto rounded-lg object-cover"/>
+            ):(
+              <p className="text-stone-400 text-sm py-6">Clique para selecionar foto de referência branca</p>
+            )}
+          </div>
+        </div>
+
+        {/* Valores alvo */}
+        <div>
+          <label className="block text-xs font-semibold text-stone-500 mb-3">Valores reais do material de referência (CIE LAB)</label>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              {label:'L* alvo',val:Lalvo,set:setLalvo,min:0,max:100,step:0.5,hint:'Papel branco ≈ 96'},
+              {label:'a* alvo',val:aalvo,set:setAalvo,min:-50,max:50,step:0.1,hint:'Neutro ≈ 0'},
+              {label:'b* alvo',val:balvo,set:setBalvo,min:-50,max:50,step:0.1,hint:'Branco ≈ 2'},
+            ].map(({label,val,set,min,max,step,hint})=>(
+              <div key={label}>
+                <label className="block text-xs text-stone-400 mb-1">{label}</label>
+                <input type="number" min={min} max={max} step={step} value={val} onChange={e=>set(Number(e.target.value))}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-400"/>
+                <p className="text-xs text-stone-300 mt-1">{hint}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={calibrar} disabled={!file||calibrando}
+          className={`w-full py-3 rounded-xl font-semibold text-sm transition-all
+            ${!file||calibrando?'bg-stone-100 text-stone-400 cursor-not-allowed':'bg-amber-700 hover:bg-amber-600 text-white'}`}>
+          {calibrando?'Calibrando...':'🎯 Calibrar agora'}
+        </button>
+      </div>
+
+      {resultado&&(
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 fade-up space-y-2">
+          <p className="font-bold text-emerald-700">✅ Calibração aplicada!</p>
+          <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#065f46'}}>{resultado.status}</p>
+          <div className="grid grid-cols-3 gap-3 mt-2">
+            {[
+              {label:'ΔL*',val:resultado.offset_L},
+              {label:'Δa*',val:resultado.offset_a},
+              {label:'Δb*',val:resultado.offset_b},
+            ].map(({label,val})=>(
+              <div key={label} className="bg-white rounded-lg border border-emerald-200 p-3 text-center">
+                <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',textTransform:'uppercase'}}>{label}</p>
+                <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'18px',fontWeight:700,color:val>0?'#16a34a':val<0?'#dc2626':'#9ca3af'}}>
+                  {val>0?'+':''}{val}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   PAGE: AJUDA
+══════════════════════════════════════════════ */
+function PageAjuda({onTutorial}){
+  const faqs=[
+    {q:'O que é ICUMSA?',a:'ICUMSA é a unidade internacional de cor do açúcar. Valores menores indicam açúcar mais branco e refinado. O açúcar branco premium tem ICUMSA ≤ 45.'},
+    {q:'Como o sistema estima o ICUMSA?',a:'A câmera captura a cor do açúcar. O sistema extrai os canais L* e b* do espaço CIE LAB, calcula um score de brancura e mapeia para a escala ICUMSA.'},
+    {q:'O que é o Score de Brancura?',a:'Índice 0–100: Score = 0,8 × L* + 20 × (1 − penalidade_b). Valores próximos de 100 indicam açúcar muito branco.'},
+    {q:'O que é L*, a*, b*?',a:'CIE LAB é um espaço de cor perceptual. L* = luminosidade (0=preto, 100=branco). a* = verde a vermelho. b* = azul a amarelo. No açúcar, L* e b* são os canais mais relevantes.'},
+    {q:'Confiança "Baixa" significa erro?',a:'Não. Significa que o ICUMSA está próximo da fronteira entre classes. Recomenda-se confirmação laboratorial em casos críticos.'},
+    {q:'Foto vs Vídeo?',a:'Para fotos, o frame inteiro é analisado. Para vídeos, o sistema extrai o frame central. Em ambos os casos, recorte central 40–80% é aplicado automaticamente.'},
+  ];
+  const [open,setOpen]=useState(null);
+  return(
+    <div className="space-y-5 max-w-2xl">
+      <div>
+        <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'30px',fontWeight:700,fontStyle:'italic',color:'#1c1917'}}>
+          Ajuda
+        </h1>
+        <p className="text-stone-400 text-sm mt-1">Documentação técnica e referências</p>
+      </div>
+
+      <button onClick={onTutorial}
+        className="w-full flex items-center gap-4 p-5 bg-stone-900 text-white rounded-2xl hover:bg-stone-800 transition-all text-left">
+        <span className="text-3xl">🎓</span>
+        <div>
+          <p style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:'16px',fontWeight:600,fontStyle:'italic'}}>Tutorial guiado</p>
+          <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#78716c',marginTop:'2px'}}>Explicação passo a passo de todas as métricas</p>
+        </div>
+        <span className="ml-auto text-stone-500 font-mono">→</span>
+      </button>
+
+      <div className="space-y-2">
+        <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'#9ca3af',letterSpacing:'0.15em',textTransform:'uppercase',marginBottom:'8px'}}>
+          Perguntas Frequentes
+        </p>
+        {faqs.map((f,i)=>(
+          <div key={i} className="bg-white rounded-xl border border-stone-100 overflow-hidden">
+            <button onClick={()=>setOpen(open===i?null:i)}
+              className="w-full flex items-center justify-between px-5 py-4 text-left font-semibold text-stone-800 text-sm hover:bg-amber-50/30 transition-all">
+              {f.q}
+              <span className={`text-amber-500 text-xs font-mono transition-transform ${open===i?'rotate-180':''}`}>▼</span>
+            </button>
+            {open===i&&(
+              <div className="px-5 pb-4 text-sm text-stone-500 leading-relaxed border-t border-stone-100 pt-3 fade-in">
+                {f.a}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Tech reference */}
+      <div className="bg-stone-900 rounded-2xl p-5 space-y-2">
+        <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',color:'rgba(217,119,6,.6)',letterSpacing:'0.15em',textTransform:'uppercase',marginBottom:'12px'}}>
+          Referência técnica · Canais LAB
+        </p>
+        {[
+          ['L* = 100','branco puro (maior luminosidade)'],
+          ['L* = 0','preto absoluto'],
+          ['b* → 0','sem amarelamento (ideal refinado)'],
+          ['b* > 5','amarelamento detectável'],
+          ['ICUMSA < 45','branco premium refinado'],
+          ['ICUMSA > 600','não refinado / mascavo'],
+        ].map(([k,v])=>(
+          <p key={k} style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',color:'#78716c'}}>
+            <span style={{color:'#fbbf24'}}>{k}</span>
+            <span style={{color:'#44403c'}}> → </span>
+            {v}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   APP ROOT
+══════════════════════════════════════════════ */
+function App(){
+  const [page,setPage]=useState('analise');
+  const [sidebarOpen,setSidebarOpen]=useState(false);
+  const [tutorial,setTutorial]=useState(()=>!localStorage.getItem('tutorial_done'));
+
+  const closeTutorial=()=>{
+    localStorage.setItem('tutorial_done','1');
+    setTutorial(false);
+  };
+
+  const pages={
+    analise:<PageAnalise/>,
+    monitoramento:<PageMonitoramento/>,
+    treino:<PageTreino/>,
+    calibracao:<PageCalibracao/>,
+    historico:<PageHistorico/>,
+    ajuda:<PageAjuda onTutorial={()=>setTutorial(true)}/>,
+  };
+
+  return(
+    <div className="flex min-h-screen" style={{background:'#FDFAF4'}}>
+      <Sidebar page={page} setPage={setPage} open={sidebarOpen}
+        onClose={()=>setSidebarOpen(false)} onTutorial={()=>setTutorial(true)}/>
+
+      <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+        {/* Mobile topbar */}
+        <header className="md:hidden bg-stone-950 px-4 py-3 flex items-center gap-3 sticky top-0 z-20 border-b border-stone-800">
+          <button onClick={()=>setSidebarOpen(true)} className="text-stone-500 hover:text-white w-6 h-6"><Icon.Menu/></button>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-amber-600/15 rounded-lg border border-amber-500/25 flex items-center justify-center">
+              <div className="w-4 h-4 text-amber-400"><Icon.Cana/></div>
+            </div>
+            <span style={{fontFamily:'Playfair Display,Georgia,serif',color:'white',fontWeight:600,fontStyle:'italic',fontSize:'16px'}}>CanaVision</span>
+          </div>
+        </header>
+
+        <main className="flex-1 p-5 md:p-8 max-w-5xl w-full mx-auto">
+          {pages[page]||pages.analise}
+        </main>
+
+        <footer className="border-t border-stone-100 px-8 py-4">
+          <p style={{fontFamily:'JetBrains Mono,monospace',fontSize:'9px',letterSpacing:'0.1em',color:'#e7e5e4',textAlign:'center'}}>
+            CANAVISION POC · SISTEMA DE VISÃO DE COR PARA AÇÚCAR · ICUMSA STANDARD
+          </p>
+        </footer>
+      </div>
+
+      {tutorial&&<Tutorial onClose={closeTutorial}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

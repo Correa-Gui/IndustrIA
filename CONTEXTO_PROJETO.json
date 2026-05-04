@@ -1,0 +1,284 @@
+{
+  "projeto": {
+    "nome": "Sistema de Visão de Cor para Açúcar",
+    "descricao": "POC + Versão Final de sistema automatizado de análise de qualidade de cor em açúcar usando visão computacional",
+    "status": "Planning → Desenvolvimento",
+    "data_inicio": "2026-05-01",
+    "duracao_total_dias": 55,
+    "fases": [
+      {
+        "nome": "POC (v1)",
+        "duracao_dias": 20,
+        "data_inicio": "2026-05-01",
+        "data_fim": "2026-05-22"
+      },
+      {
+        "nome": "Versão Final (produção)",
+        "duracao_dias": 32,
+        "data_inicio": "2026-05-23",
+        "data_fim": "2026-07-24"
+      }
+    ]
+  },
+  "features_pipeline": {
+    "captura": {
+      "poc": {
+        "descricao": "Webcam USB 1080p @ 1 fps, auto-exposure travado",
+        "tecnologia": "OpenCV VideoCapture",
+        "duracao_dias": 2,
+        "complexidade": 1,
+        "risk_level": "media"
+      },
+      "final": {
+        "descricao": "Câmera industrial GigE (Basler ace / FLIR Blackfly), global shutter, C-mount foco fixo",
+        "tecnologia": "SDK Pylon / Spinnaker via GStreamer",
+        "duracao_dias": 3,
+        "complexidade": 2,
+        "risk_level": "alta"
+      }
+    },
+    "preprocessamento": {
+      "poc": {
+        "descricao": "OpenCV ROI fixa, white balance por referência",
+        "tecnologia": "OpenCV",
+        "duracao_dias": 2,
+        "complexidade": 1,
+        "risk_level": "baixa"
+      },
+      "final": {
+        "descricao": "OpenCV + perfil ICC da câmera, ROI dinâmica se necessário",
+        "tecnologia": "OpenCV, colorspacious (ICC)",
+        "duracao_dias": 3,
+        "complexidade": 2,
+        "risk_level": "baixa"
+      }
+    },
+    "feature_cor": {
+      "poc": {
+        "descricao": "scikit-image LAB — média L* a* b* na ROI",
+        "tecnologia": "scikit-image",
+        "duracao_dias": 2,
+        "complexidade": 1,
+        "risk_level": "baixa"
+      },
+      "final": {
+        "descricao": "LAB + regressão linear calibrada contra ICUMSA do laboratório",
+        "tecnologia": "scikit-image + scikit-learn",
+        "duracao_dias": 3,
+        "complexidade": 2,
+        "risk_level": "baixa"
+      }
+    },
+    "analise": {
+      "poc": {
+        "descricao": "ΔE CIIDE2000 vs referência única, thresholds fixos",
+        "tecnologia": "scikit-image colorspacious",
+        "duracao_dias": 2,
+        "complexidade": 1,
+        "risk_level": "media"
+      },
+      "final": {
+        "descricao": "scikit-learn Random Forest treinado no histórico rotulado, thresholds adaptativos",
+        "tecnologia": "scikit-learn",
+        "duracao_dias": 4,
+        "complexidade": 3,
+        "risk_level": "media"
+      }
+    },
+    "tendencia": {
+      "poc": {
+        "descricao": "EWMA em pandas",
+        "tecnologia": "pandas",
+        "duracao_dias": 2,
+        "complexidade": 1,
+        "risk_level": "baixa"
+      },
+      "final": {
+        "descricao": "EWMA + detecção de drift (CUSUM / algoritmo online)",
+        "tecnologia": "pandas + scipy",
+        "duracao_dias": 3,
+        "complexidade": 2,
+        "risk_level": "baixa"
+      }
+    },
+    "persistencia": {
+      "poc": {
+        "descricao": "SQLite local (arquivo único)",
+        "tecnologia": "sqlite3",
+        "duracao_dias": 2,
+        "complexidade": 1,
+        "risk_level": "baixa"
+      },
+      "final": {
+        "descricao": "InfluxDB OSS (série temporal) + PostgreSQL (metadados e rotulagem)",
+        "tecnologia": "influxdb-client + psycopg2",
+        "duracao_dias": 3,
+        "complexidade": 2,
+        "risk_level": "media"
+      }
+    },
+    "dashboard": {
+      "poc": {
+        "descricao": "Streamlit, 1 usuário",
+        "tecnologia": "streamlit",
+        "duracao_dias": 3,
+        "complexidade": 2,
+        "risk_level": "media"
+      },
+      "final": {
+        "descricao": "Grafana OSS — multi-usuário, permissões, painéis compartilhados",
+        "tecnologia": "Grafana OSS",
+        "duracao_dias": 5,
+        "complexidade": 3,
+        "risk_level": "media"
+      }
+    },
+    "alertas": {
+      "poc": {
+        "descricao": "Banner Streamlit + e-mail via SMTP",
+        "tecnologia": "smtplib",
+        "duracao_dias": 2,
+        "complexidade": 1,
+        "risk_level": "baixa"
+      },
+      "final": {
+        "descricao": "MQTT → SCADA, notificação push (ntfy / Telegram) e e-mail",
+        "tecnologia": "paho-mqtt, requests (ntfy/Telegram)",
+        "duracao_dias": 3,
+        "complexidade": 2,
+        "risk_level": "media"
+      }
+    },
+    "integracao": {
+      "poc": {
+        "descricao": "Nenhuma — operador reage pelo dashboard",
+        "tecnologia": "N/A",
+        "duracao_dias": 3,
+        "complexidade": 1,
+        "risk_level": "baixa"
+      },
+      "final": {
+        "descricao": "OPC-UA ou Modbus TCP com PLC da centrífuga (malha fechada na água)",
+        "tecnologia": "python-opc ou pyModbus",
+        "duracao_dias": 5,
+        "complexidade": 3,
+        "risk_level": "alta"
+      }
+    }
+  },
+  "estimativas": {
+    "poc_dias": 20,
+    "final_dias": 32,
+    "total_dias": 55,
+    "total_com_qa": 58,
+    "caminho_critico_poc_dias": 11,
+    "caminho_critico_final_dias": 18
+  },
+  "dependencias_criticas": [
+    {
+      "id": 1,
+      "nome": "Hardware câmera",
+      "descricao": "Webcam USB funcionando em mini PC",
+      "risk": "Driver, permissões, auto-exposure",
+      "mitigacao": "cv2.CAP_PROP_* pré-configuradas",
+      "fallback": "OpenCV mock com frames pré-capturados"
+    },
+    {
+      "id": 2,
+      "nome": "Validação científica ΔE",
+      "descricao": "Valores de referência ICUMSA calibrados",
+      "risk": "Thresholds incorretos = análise inútil",
+      "mitigacao": "Coletar amostras com espectrômetro",
+      "fallback": "Padrões ColorChecker"
+    },
+    {
+      "id": 3,
+      "nome": "Integração OPC-UA/Modbus",
+      "descricao": "Disponibilidade do PLC",
+      "risk": "Pode bloquear projeto Final",
+      "mitigacao": "Mock PLC para testes",
+      "fallback": "Interface HTTP simples"
+    }
+  ],
+  "arquivos_gerados": {
+    "codigo": {
+      "captura.py": "VideoCapture wrapper (110 linhas)",
+      "preprocessamento.py": "ROI + white balance (75 linhas)",
+      "feature_cor.py": "LAB extraction (70 linhas)",
+      "analise_cor.py": "Delta E CIIDE2000 (60 linhas)",
+      "tendencia.py": "EWMA + drift (95 linhas)",
+      "persistencia.py": "SQLite CRUD (135 linhas)",
+      "alertas.py": "Buffer + SMTP (115 linhas)",
+      "app.py": "Streamlit dashboard 4-abas (180 linhas)"
+    },
+    "documentacao": {
+      "CONTEXTO_PROJETO.md": "Este documento (estruturado)",
+      "CONTEXTO_PROJETO.json": "Versão estruturada (consumo automatizado)",
+      "ESTIMATIVA_FEATURES.md": "Análise detalhada complexidade",
+      "visao_cor_acucar_v2.wbs": "WBS com durações reais"
+    },
+    "planejamento": {
+      "visao_cor_acucar_cronograma.xlsx": "Cronograma 44 tarefas com predecessoras"
+    }
+  },
+  "tecnologias_stack": {
+    "linguagem": "Python 3.11",
+    "visao_computacional": ["opencv-python", "scikit-image"],
+    "ciencia_dados": ["numpy", "pandas", "scikit-learn", "scipy"],
+    "dashboard": ["streamlit", "grafana"],
+    "banco_dados": ["sqlite3", "influxdb-client", "psycopg2"],
+    "comunicacao": ["smtplib", "paho-mqtt"],
+    "protocolos_industriais": ["python-opc", "pyModbus"],
+    "ci_cd": ["docker", "systemd"]
+  },
+  "quick_start": {
+    "setup": [
+      "cd C:\\Users\\gbaptista\\visao_cor_poc",
+      "pip install -r requirements.txt"
+    ],
+    "testes_modulos": [
+      "python captura.py          # Mock VideoCapture",
+      "python feature_cor.py      # LAB extraction",
+      "python analise_cor.py      # Delta E test",
+      "python persistencia.py     # SQLite CRUD"
+    ],
+    "rodar_dashboard": [
+      "streamlit run app.py       # http://localhost:8501"
+    ],
+    "gerar_cronograma": [
+      "cd C:\\Users\\gbaptista\\Desktop",
+      "python gerar_cronograma.py"
+    ]
+  },
+  "proximos_passos": [
+    "Revisar estimativas com stakeholders",
+    "Equipar hardware: Webcam USB + LED panels + mini PC",
+    "Setup ambiente: Python 3.11, pip install",
+    "Coletar amostras açúcar + espectrômetro",
+    "Rodar captura.py em hardware real",
+    "Calibrar white balance com ColorChecker",
+    "Implementar pré-processamento com imagens reais",
+    "Validar LAB extraction vs espectrômetro",
+    "Treinar Random Forest com dataset rotulado",
+    "Deploy Streamlit em mini PC",
+    "Migrar para Grafana + InfluxDB",
+    "Integração OPC-UA com PLC",
+    "UAT e validação de precisão"
+  ],
+  "glossario": {
+    "delta_e_ciide2000": "Diferença de cor perceptual entre duas cores em espaço LAB",
+    "ewma": "Exponential Weighted Moving Average (tendência com pesos exponenciais)",
+    "cusum": "Cumulative Sum Control Chart (detecção de drift em séries)",
+    "icumsa": "International Commission for Uniform Methods of Sugar Analysis (padrão de cor)",
+    "opc_ua": "Open Platform Communications Unified Architecture (protocolo industrial)",
+    "gstreamer": "Framework de streaming (para SDK câmeras industriais)",
+    "pylon_spinnaker": "SDKs das câmeras (Basler/FLIR respectivamente)",
+    "lab": "Espaço de cor perceptual (L* luminância, a* verde-vermelho, b* azul-amarelo)"
+  },
+  "metadata": {
+    "versao": "2.0",
+    "data_geracao": "2026-04-24",
+    "gerado_por": "Claude Code + Claude 4.6",
+    "status": "Ready for Onboarding"
+  }
+}
